@@ -2,8 +2,8 @@
   "use strict";
 
   const STATION_ID = "9410170";
-  const REFRESH_MS = 30 * 60 * 1000;
   const API_BASE = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter";
+  const REFRESH_MS = 30 * 60 * 1000;
 
   const canvas = document.getElementById("tideCanvas");
   const context = canvas.getContext("2d", { alpha: false });
@@ -21,25 +21,22 @@
     width: 0,
     height: 0,
     pixelRatio: 1,
-    targetHeight: 2.4,
-    displayedHeight: 2.4,
     normalizedHeight: 0.5,
     targetNormalizedHeight: 0.5,
     direction: 1,
     targetDirection: 1,
-    energy: 0.22,
-    targetEnergy: 0.22,
-    lastFrame: performance.now(),
-    dataLoaded: false
+    energy: 0.28,
+    targetEnergy: 0.28,
+    lastFrame: performance.now()
   };
 
   const layers = Array.from({ length: 12 }, (_, index) => ({
     depth: index / 11,
-    speed: 0.13 + index * 0.029,
-    amplitude: 18 + index * 5.2,
-    wavelength: 160 + index * 33,
+    speed: 0.13 + index * 0.03,
+    amplitude: 17 + index * 5,
+    wavelength: 155 + index * 34,
     phase: Math.random() * Math.PI * 2,
-    opacity: 0.024 + index * 0.008
+    opacity: 0.025 + index * 0.008
   }));
 
   let audioContext = null;
@@ -47,173 +44,201 @@
   let noiseGain = null;
   let soundOn = false;
 
-  function pad(number) {
-    return String(number).padStart(2, "0");
+  function pad(value) {
+    return String(value).padStart(2, "0");
   }
 
-  function dateString(date) {
-    return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}`;
-  }
-
-  function noaaURL(interval) {
+  function todayForNOAA() {
     const now = new Date();
+    return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
+  }
 
+  function noaaURL() {
     const parameters = new URLSearchParams({
-      begin_date: dateString(now),
+      begin_date: todayForNOAA(),
       range: "48",
       station: STATION_ID,
       product: "predictions",
       datum: "MLLW",
       time_zone: "lst_ldt",
       units: "english",
-      interval,
+      interval: "h",
       format: "json",
-      application: "tide_field"
+      application: "tide"
     });
 
     return `${API_BASE}?${parameters.toString()}`;
   }
 
   function parseNOAATime(value) {
-    const [datePart, timePart] = value.split(" ");
-    const [year, month, day] = datePart.split("-").map(Number);
-    const [hour, minute] = timePart.split(":").map(Number);
+    const [dateText, timeText] = value.split(" ");
+    const [year, month, day] = dateText.split("-").map(Number);
+    const [hours, minutes] = timeText.split(":").map(Number);
 
-    return new Date(year, month - 1, day, hour, minute, 0);
+    return new Date(year, month - 1, day, hours, minutes, 0);
   }
 
-  function interpolatePrediction(predictions, now) {
-    const nowTime = now.getTime();
-
-    for (let index = 0; index < predictions.length - 1; index += 1) {
-      const before = predictions[index];
-      const after = predictions[index + 1];
-
-      if (before.time.getTime() <= nowTime && after.time.getTime() >= nowTime) {
-        const span = after.time.getTime() - before.time.getTime();
-        const progress = span === 0
-          ? 0
-          : (nowTime - before.time.getTime()) / span;
-
-        return {
-          value: before.value + (after.value - before.value) * progress,
-          rate: (after.value - before.value) / span
-        };
-      }
-    }
-
-    const closest = predictions.reduce((best, item) => {
-      const bestDistance = Math.abs(best.time.getTime() - nowTime);
-      const itemDistance = Math.abs(item.time.getTime() - nowTime);
-      return itemDistance < bestDistance ? item : best;
-    });
-
-    return {
-      value: closest.value,
-      rate: 0
-    };
-  }
-
-  function formatClock(date) {
+  function formatTime(date) {
     return new Intl.DateTimeFormat("en-US", {
       hour: "numeric",
       minute: "2-digit"
     }).format(date);
   }
 
-  function setText(element, value) {
-    element.textContent = value;
+  function setText(element, text) {
+    element.textContent = text;
   }
 
-  function updateReadout(predictions, events) {
-    const now = new Date();
-    const current = interpolatePrediction(predictions, now);
-    const values = predictions.map((prediction) => prediction.value);
-    const low = Math.min(...values);
-    const high = Math.max(...values);
+  function fallbackTide(now = new Date()) {
+    const cycleMilliseconds = 12.42 * 60 * 60 * 1000;
+    const phase = ((now.getTime() % cycleMilliseconds) / cycleMilliseconds) * Math.PI * 2;
+    const value = 2.8 + Math.sin(phase) * 2.05;
+    const rate = Math.cos(phase);
+
+    return {
+      value,
+      rate,
+      low: 0.75,
+      high: 4.85,
+      nextTime: new Date(
+        now.getTime() +
+          ((rate >= 0 ? Math.PI / 2 - phase : (Math.PI * 3) / 2 - phase) + Math.PI * 2) %
+            (Math.PI * 2) /
+            (Math.PI * 2) *
+            cycleMilliseconds
+      ),
+      nextIsHigh: rate >= 0
+    };
+  }
+
+  function interpolate(predictions, now) {
+    const nowTime = now.getTime();
+
+    for (let index = 0; index < predictions.length - 1; index += 1) {
+      const previous = predictions[index];
+      const next = predictions[index + 1];
+
+      if (previous.time.getTime() <= nowTime && next.time.getTime() >= nowTime) {
+        const span = next.time.getTime() - previous.time.getTime();
+        const progress = span === 0 ? 0 : (nowTime - previous.time.getTime()) / span;
+
+        return {
+          value: previous.value + (next.value - previous.value) * progress,
+          rate: next.value - previous.value
+        };
+      }
+    }
+
+    return {
+      value: predictions[0].value,
+      rate: 0
+    };
+  }
+
+  function findNextTurningPoint(predictions, now) {
+    const nowTime = now.getTime();
+
+    for (let index = 1; index < predictions.length - 1; index += 1) {
+      const previous = predictions[index - 1];
+      const current = predictions[index];
+      const next = predictions[index + 1];
+
+      if (current.time.getTime() <= nowTime) {
+        continue;
+      }
+
+      const isHigh = current.value >= previous.value && current.value >= next.value;
+      const isLow = current.value <= previous.value && current.value <= next.value;
+
+      if (isHigh || isLow) {
+        return {
+          time: current.time,
+          isHigh,
+          value: current.value
+        };
+      }
+    }
+
+    return null;
+  }
+
+  function updateFromValues(current, low, high, next, sourceLabel) {
     const range = Math.max(high - low, 0.1);
     const normalized = Math.min(1, Math.max(0, (current.value - low) / range));
     const rising = current.rate >= 0;
 
-    const nextEvent = events.find((event) => event.time.getTime() > now.getTime());
-
-    state.targetHeight = current.value;
     state.targetNormalizedHeight = normalized;
     state.targetDirection = rising ? 1 : -1;
-    state.targetEnergy = Math.min(1, Math.abs(current.rate) * 1000 * 180);
+    state.targetEnergy = Math.min(0.95, 0.18 + Math.abs(current.rate) * 0.9);
 
     setText(tideHeight, current.value.toFixed(1));
     setText(tideTrend, rising ? "Rising" : "Falling");
 
-    if (nextEvent) {
-      setText(
-        eventLabel,
-        nextEvent.type === "H" ? "Next high tide" : "Next low tide"
-      );
-
-      setText(
-        eventTime,
-        `${formatClock(nextEvent.time)} · ${nextEvent.value.toFixed(1)} ft`
-      );
+    if (next) {
+      setText(eventLabel, next.isHigh ? "Next high tide" : "Next low tide");
+      setText(eventTime, `${formatTime(next.time)} · ${next.value.toFixed(1)} ft`);
     } else {
-      setText(eventLabel, "San Diego tide");
-      setText(eventTime, "Updating shortly");
+      setText(eventLabel, "Tide field");
+      setText(eventTime, "Moving with the coast");
     }
 
-    setText(updatedAt, `Updated ${formatClock(now)}`);
-    offlineNotice.hidden = true;
-    state.dataLoaded = true;
+    setText(updatedAt, sourceLabel);
+  }
+
+  function showFallback() {
+    const now = new Date();
+    const tide = fallbackTide(now);
+
+    updateFromValues(
+      { value: tide.value, rate: tide.rate },
+      tide.low,
+      tide.high,
+      {
+        time: tide.nextTime,
+        isHigh: tide.nextIsHigh,
+        value: tide.nextIsHigh ? tide.high : tide.low
+      },
+      "Tide field · San Diego"
+    );
+
+    offlineNotice.hidden = false;
+    offlineNotice.textContent = "Live NOAA data is temporarily unavailable. Showing a local tide cycle.";
   }
 
   async function loadTideData() {
     try {
-      const [predictionsResponse, eventsResponse] = await Promise.all([
-        fetch(noaaURL("15"), { cache: "no-store" }),
-        fetch(noaaURL("hilo"), { cache: "no-store" })
-      ]);
+      const response = await fetch(noaaURL(), {
+        cache: "no-store",
+        mode: "cors"
+      });
 
-      if (!predictionsResponse.ok || !eventsResponse.ok) {
-        throw new Error("NOAA request failed");
+      if (!response.ok) {
+        throw new Error(`NOAA response: ${response.status}`);
       }
 
-      const predictionsData = await predictionsResponse.json();
-      const eventsData = await eventsResponse.json();
+      const data = await response.json();
 
-      if (
-        !Array.isArray(predictionsData.predictions) ||
-        !Array.isArray(eventsData.predictions)
-      ) {
+      if (!Array.isArray(data.predictions) || data.predictions.length < 3) {
         throw new Error("NOAA returned no prediction data");
       }
 
-      const predictions = predictionsData.predictions.map((item) => ({
+      const predictions = data.predictions.map((item) => ({
         time: parseNOAATime(item.t),
         value: Number(item.v)
       }));
 
-      const events = eventsData.predictions.map((item) => ({
-        time: parseNOAATime(item.t),
-        value: Number(item.v),
-        type: item.type
-      }));
+      const now = new Date();
+      const current = interpolate(predictions, now);
+      const values = predictions.map((item) => item.value);
+      const low = Math.min(...values);
+      const high = Math.max(...values);
+      const next = findNextTurningPoint(predictions, now);
 
-      if (predictions.length < 2) {
-        throw new Error("Not enough tide predictions");
-      }
-
-      updateReadout(predictions, events);
+      updateFromValues(current, low, high, next, `Live NOAA · Updated ${formatTime(now)}`);
+      offlineNotice.hidden = true;
     } catch (error) {
-      console.error("Tide data error:", error);
-
-      offlineNotice.hidden = false;
-
-      if (!state.dataLoaded) {
-        setText(tideHeight, "—");
-        setText(tideTrend, "Tide data unavailable");
-        setText(eventLabel, "San Diego");
-        setText(eventTime, "Trying again soon");
-        setText(updatedAt, "Live data unavailable");
-      }
+      console.warn("NOAA tide data unavailable:", error);
+      showFallback();
     }
   }
 
@@ -241,51 +266,46 @@
     context.fillRect(0, 0, state.width, state.height);
   }
 
-  function drawLayer(layer, time, index) {
-    const width = state.width;
-    const height = state.height;
+  function drawLayer(layer, seconds, index) {
     const fullness = state.normalizedHeight;
-    const energy = 0.3 + state.energy * 0.7;
-    const baseLevel = height * (0.9 - fullness * 0.58);
-    const depthOffset = (layer.depth - 0.5) * height * 0.31;
-    const waveAmplitude = layer.amplitude * (0.55 + energy * 0.7);
-    const drift = time * layer.speed * state.direction;
+    const energy = 0.35 + state.energy * 0.65;
+    const baseLevel = state.height * (0.9 - fullness * 0.58);
+    const depthOffset = (layer.depth - 0.5) * state.height * 0.31;
+    const amplitude = layer.amplitude * (0.55 + energy * 0.7);
+    const drift = seconds * layer.speed * state.direction;
     const yBase = baseLevel + depthOffset;
     const tint = 29 + Math.round(index * 2.1);
     const alpha = layer.opacity + fullness * 0.018;
 
     context.beginPath();
-    context.moveTo(-30, height + 40);
+    context.moveTo(-30, state.height + 40);
 
-    for (let x = -30; x <= width + 40; x += 14) {
-      const waveOne = Math.sin(
+    for (let x = -30; x <= state.width + 40; x += 14) {
+      const firstWave = Math.sin(
         (x + drift + layer.phase * 80) / layer.wavelength
       );
-      const waveTwo = Math.sin(
+
+      const secondWave = Math.sin(
         (x - drift * 0.42 + layer.phase * 130) / (layer.wavelength * 0.52)
       );
-      const waveThree = Math.cos(
+
+      const thirdWave = Math.cos(
         (x + drift * 0.19) / (layer.wavelength * 1.9)
       );
 
       const y =
         yBase +
-        waveOne * waveAmplitude +
-        waveTwo * waveAmplitude * 0.25 +
-        waveThree * 7;
+        firstWave * amplitude +
+        secondWave * amplitude * 0.25 +
+        thirdWave * 7;
 
       context.lineTo(x, y);
     }
 
-    context.lineTo(width + 40, height + 40);
+    context.lineTo(state.width + 40, state.height + 40);
     context.closePath();
 
-    const fill = context.createLinearGradient(
-      0,
-      yBase - 100,
-      0,
-      yBase + 140
-    );
+    const fill = context.createLinearGradient(0, yBase - 100, 0, yBase + 140);
 
     fill.addColorStop(
       0,
@@ -299,22 +319,24 @@
 
     context.beginPath();
 
-    for (let x = -30; x <= width + 40; x += 14) {
-      const waveOne = Math.sin(
+    for (let x = -30; x <= state.width + 40; x += 14) {
+      const firstWave = Math.sin(
         (x + drift + layer.phase * 80) / layer.wavelength
       );
-      const waveTwo = Math.sin(
+
+      const secondWave = Math.sin(
         (x - drift * 0.42 + layer.phase * 130) / (layer.wavelength * 0.52)
       );
-      const waveThree = Math.cos(
+
+      const thirdWave = Math.cos(
         (x + drift * 0.19) / (layer.wavelength * 1.9)
       );
 
       const y =
         yBase +
-        waveOne * waveAmplitude +
-        waveTwo * waveAmplitude * 0.25 +
-        waveThree * 7;
+        firstWave * amplitude +
+        secondWave * amplitude * 0.25 +
+        thirdWave * 7;
 
       if (x === -30) {
         context.moveTo(x, y);
@@ -323,10 +345,7 @@
       }
     }
 
-    context.strokeStyle = `rgba(206, 225, 215, ${
-      0.025 + fullness * 0.026
-    })`;
-
+    context.strokeStyle = `rgba(206, 225, 215, ${0.025 + fullness * 0.026})`;
     context.lineWidth = 0.7;
     context.stroke();
   }
@@ -338,9 +357,6 @@
     state.lastFrame = time;
 
     const smoothing = 1 - Math.pow(0.0008, delta);
-
-    state.displayedHeight +=
-      (state.targetHeight - state.displayedHeight) * smoothing;
 
     state.normalizedHeight +=
       (state.targetNormalizedHeight - state.normalizedHeight) * smoothing;
@@ -363,16 +379,16 @@
 
   function createNoiseBuffer(audio) {
     const duration = 2;
-    const frameCount = audio.sampleRate * duration;
-    const buffer = audio.createBuffer(1, frameCount, audio.sampleRate);
+    const length = audio.sampleRate * duration;
+    const buffer = audio.createBuffer(1, length, audio.sampleRate);
     const channel = buffer.getChannelData(0);
 
-    let last = 0;
+    let previous = 0;
 
-    for (let index = 0; index < frameCount; index += 1) {
+    for (let index = 0; index < length; index += 1) {
       const white = Math.random() * 2 - 1;
-      last = last * 0.985 + white * 0.06;
-      channel[index] = last;
+      previous = previous * 0.985 + white * 0.06;
+      channel[index] = previous;
     }
 
     return buffer;
@@ -446,7 +462,7 @@
       try {
         source.stop();
       } catch (error) {
-        // Source has already stopped.
+        // The audio source may already have stopped.
       }
     }, 400);
 
@@ -477,6 +493,11 @@
 
   resizeCanvas();
   requestAnimationFrame(draw);
+  showFallback();
   loadTideData();
-  window.setInterval(loadTideData, REFRESH_MS);
+
+  window.setInterval(() => {
+    showFallback();
+    loadTideData();
+  }, REFRESH_MS);
 })();
