@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, viewport-fit=cover"
+  >
+  <meta
+    name="description"
+    content="A live tide field for San Diego, California."
+  >
+  <meta name="theme-color" content="#071016">
+  <title>Tide — San Diego</title>
+
+  <link rel="stylesheet" href="style.css?v=1">
+</head>
+
+<body>
+  <main class="tide-app">
+    <canvas
+      id="tideCanvas"
+      aria-label="An abstract animated tide field driven by San Diego tide predictions"
+    ></canvas>
+
+    <div class="grain" aria-hidden="true"></div>
+    <div class="vignette" aria-hidden="true"></div>
+
+    <header class="masthead">
+      <p class="eyebrow">Pacific tide field</p>
+      <h1>Tide</h1>
+    </header>
+
+    <section class="reading" aria-live="polite" aria-atomic="true">
+      <p class="location">San Diego, California</p>
+
+      <div class="primary-reading">
+        <p class="height" id="tideHeight">—</p>
+        <p class="unit">ft</p>
+      </div>
+
+      <p class="trend" id="tideTrend">Loading tide prediction</p>
+
+      <div class="next-event">
+        <span class="event-label" id="eventLabel">Next tide</span>
+        <span class="event-time" id="eventTime">—</span>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <p id="updatedAt">Preparing the field</p>
+
+      <button
+        class="sound-toggle"
+        id="soundToggle"
+        type="button"
+        aria-pressed="false"
+        aria-label="Turn ambient sound on"
+      >
+        <span class="sound-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" focusable="false">
+            <path d="M4 10v4h4l5 4V6L8 10H4Z"></path>
+            <path class="sound-wave" d="M16 9.5a4 4 0 0 1 0 5"></path>
+            <path class="sound-wave" d="M18.5 7a7.5 7.5 0 0 1 0 10"></path>
+          </svg>
+        </span>
+        <span id="soundLabel">Sound off</span>
+      </button>
+    </footer>
+
+    <div
+      class="offline-notice"
+      id="offlineNotice"
+      role="status"
+      aria-live="polite"
+      hidden
+    >
+      Tide data is temporarily unavailable. The field will continue quietly.
+    </div>
+
+    <noscript>
+      <div class="no-script">
+        Tide needs JavaScript enabled to retrieve live local tide predictions.
+      </div>
+    </noscript>
+  </main>
+
+  <script src="app.js?v=1"></script>
+</body>
+</html>
