@@ -307,10 +307,8 @@
 
     const fill = context.createLinearGradient(0, yBase - 100, 0, yBase + 140);
 
-    fill.addColorStop(
-      0,
-      `rgba(${tint}, ${70 + index * 3}, ${73 + index * 3}, ${alpha})`
-    );
+    fill.addColorStop(0, `rgba(255, 255, 255, ${alpha * 1.85})`);
+
 
     fill.addColorStop(1, `rgba(6, 29, 34, ${alpha * 0.2})`);
 
@@ -345,7 +343,8 @@
       }
     }
 
-    context.strokeStyle = `rgba(206, 225, 215, ${0.025 + fullness * 0.026})`;
+    context.strokeStyle = `rgba(255, 255, 255, ${0.08 + fullness * 0.07})`;
+
     context.lineWidth = 0.7;
     context.stroke();
   }
