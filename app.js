@@ -32,9 +32,10 @@
 
   const layers = Array.from({ length: 12 }, (_, index) => ({
     depth: index / 11,
-    speed: 0.13 + index * 0.03,
+    speed: 5 + index * 1.1,
     amplitude: 17 + index * 5,
-    wavelength: 155 + index * 34,
+    wavelength: 340 + index * 70,
+    swellSpeed: 0.09 + index * 0.012,
     phase: Math.random() * Math.PI * 2,
     opacity: 0.05 + index * 0.012
   }));
@@ -266,7 +267,8 @@
     const depthOffset = (layer.depth - 0.5) * state.height * 0.31;
     const amplitude = layer.amplitude * (0.55 + energy * 0.7);
     const drift = seconds * layer.speed * state.direction;
-    const yBase = baseLevel + depthOffset;
+    const swell = Math.sin(seconds * layer.swellSpeed + layer.phase) * (8 + layer.depth * 10);
+    const yBase = baseLevel + depthOffset + swell;
     const alpha = layer.opacity + fullness * 0.018;
 
     context.beginPath();
