@@ -6,7 +6,7 @@
   const REFRESH_MS = 30 * 60 * 1000;
 
   const canvas = document.getElementById("tideCanvas");
-  const context = canvas.getContext("2d", { alpha: false });
+  const context = canvas.getContext("2d");
 
   const tideHeight = document.getElementById("tideHeight");
   const tideTrend = document.getElementById("tideTrend");
@@ -36,7 +36,7 @@
     amplitude: 17 + index * 5,
     wavelength: 155 + index * 34,
     phase: Math.random() * Math.PI * 2,
-    opacity: 0.025 + index * 0.008
+    opacity: 0.05 + index * 0.012
   }));
 
   let audioContext = null;
@@ -255,15 +255,8 @@
     context.setTransform(state.pixelRatio, 0, 0, state.pixelRatio, 0, 0);
   }
 
-  function drawBackground() {
-    const gradient = context.createLinearGradient(0, 0, 0, state.height);
-
-    gradient.addColorStop(0, "#071016");
-    gradient.addColorStop(0.54, "#0a1b20");
-    gradient.addColorStop(1, "#0b2227");
-
-    context.fillStyle = gradient;
-    context.fillRect(0, 0, state.width, state.height);
+  function clearCanvas() {
+    context.clearRect(0, 0, state.width, state.height);
   }
 
   function drawLayer(layer, seconds, index) {
@@ -274,7 +267,6 @@
     const amplitude = layer.amplitude * (0.55 + energy * 0.7);
     const drift = seconds * layer.speed * state.direction;
     const yBase = baseLevel + depthOffset;
-    const tint = 29 + Math.round(index * 2.1);
     const alpha = layer.opacity + fullness * 0.018;
 
     context.beginPath();
@@ -307,10 +299,9 @@
 
     const fill = context.createLinearGradient(0, yBase - 100, 0, yBase + 140);
 
-    fill.addColorStop(0, `rgba(255, 255, 255, ${alpha * 1.85})`);
-
-
-    fill.addColorStop(1, `rgba(6, 29, 34, ${alpha * 0.2})`);
+    fill.addColorStop(0, `rgba(255, 255, 255, ${alpha * 1.6})`);
+    fill.addColorStop(0.35, `rgba(120, 214, 238, ${alpha})`);
+    fill.addColorStop(1, `rgba(0, 96, 132, ${alpha * 0.9})`);
 
     context.fillStyle = fill;
     context.fill();
@@ -343,9 +334,9 @@
       }
     }
 
-    context.strokeStyle = `rgba(255, 255, 255, ${0.08 + fullness * 0.07})`;
+    context.strokeStyle = `rgba(255, 255, 255, ${0.22 + layer.depth * 0.18 + fullness * 0.08})`;
 
-    context.lineWidth = 0.7;
+    context.lineWidth = 1;
     context.stroke();
   }
 
@@ -367,7 +358,7 @@
         (state.targetDirection - state.direction) * Math.min(1, delta * 0.13);
     }
 
-    drawBackground();
+    clearCanvas();
 
     layers.forEach((layer, index) => {
       drawLayer(layer, seconds, index);
